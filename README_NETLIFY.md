@@ -19,7 +19,10 @@ fetch('/api/supabase-key', { cache: 'no-store' })
 
 Client usage with token (recommended):
 
-fetch('/api/supabase-key', { headers: { 'x-key-token': 'YOUR_TOKEN' }, cache: 'no-store' })
+fetch('/api/supabase-key', {
+  headers: { 'x-key-token': 'YOUR_TOKEN' },
+  cache: 'no-store'
+})
   .then(r => r.json())
   .then(j => console.log(j.anonKey));
 
