@@ -1,0 +1,1984 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>이젠아카데미 강의실 자산 및 시설 관리 시스템</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700;900&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Supabase JS Library -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body {
+            font-family: 'Noto Sans KR', 'Inter', sans-serif;
+        }
+        /* Custom scrollbar for sleeker look */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        /* 드래그 카드 겹침을 방지하는 컴팩트한 일체형 카드 클래스 */
+        .draggable-asset {
+            transition: transform 0.15s ease, ring 0.15s ease;
+        }
+        /* 테두리를 밀착시키고 컴팩트하게 조율한 일체형 카드 */
+        .asset-card {
+            width: 64px;
+            height: 58px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: space-between;
+            text-align: center;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+            pointer-events: none;
+            border-width: 1.5px;
+            padding: 4px 2px;
+        }
+        .canvas-grid {
+            background-size: 20px 20px;
+            background-image: linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+                              linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+        }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col overflow-x-hidden">
+
+    <!-- TOP HEADER BAR -->
+    <header class="bg-slate-900 border-b border-slate-800 px-6 py-4 flex flex-wrap items-center justify-between gap-4 z-10 shadow-lg">
+        <div class="flex items-center gap-3">
+            <div class="bg-sky-600 text-white p-2.5 rounded-xl shadow-md shadow-sky-900/40">
+                <i class="fa-solid fa-building text-xl"></i>
+            </div>
+            <div>
+                <h1 class="text-xl font-black tracking-tight text-white flex items-center gap-2">
+                    EZEN <span class="text-sky-400 font-medium text-sm px-2 py-0.5 bg-slate-800 rounded-md border border-slate-700">스마트 자산관리</span>
+                </h1>
+                <p class="text-xs text-slate-400">이젠아카데미 시설 및 PC 현황 실시간 관리 시스템</p>
+            </div>
+        </div>
+        
+        <!-- Floor & Room Selector Navigation -->
+        <div class="flex flex-wrap items-center gap-4">
+            <!-- Floor Select -->
+            <div class="flex items-center gap-2">
+                <span class="text-xs font-bold text-slate-400"><i class="fa-solid fa-layer-group"></i> 층 선택:</span>
+                <div class="flex bg-slate-950 p-1 rounded-xl border border-slate-800" id="floor-tabs">
+                    <!-- Floors injected dynamically -->
+                </div>
+            </div>
+            <!-- Room Select -->
+            <div class="flex items-center gap-2">
+                <span class="text-xs font-bold text-slate-400"><i class="fa-solid fa-door-open"></i> 호실:</span>
+                <div class="flex bg-slate-950 p-1 rounded-xl border border-slate-800" id="classroom-tabs">
+                    <!-- Rooms injected dynamically -->
+                </div>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-3">
+            <!-- Cloud Connection Status Indicator Badge -->
+            <div id="cloud-sync-badge" class="hidden"></div>
+            <button onclick="openAddAssetModal()" class="bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold px-4 py-2.5 rounded-lg flex items-center gap-1.5 transition duration-200 shadow-md shadow-sky-900/20">
+                <i class="fa-solid fa-plus"></i> 장비 추가
+            </button>
+            <button onclick="seedDatabasePrompt()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold px-4 py-2.5 rounded-lg border border-slate-700 transition duration-200">
+                기본 배치 초기화
+            </button>
+        </div>
+    </header>
+
+    <!-- MAIN DASHBOARD WRAPPER -->
+    <main class="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 p-6">
+        
+        <!-- LEFT PANELS: Class Info & Canvas (8 columns) -->
+        <section class="lg:col-span-8 flex flex-col gap-6">
+            
+            <!-- Quick Dashboard Status Stats -->
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-4" id="stats-summary">
+                <!-- Stat Cards Injected Here -->
+            </div>
+
+            <!-- Draggable Interactive Layout Board -->
+            <div class="bg-slate-900 rounded-2xl border border-slate-800 flex flex-col overflow-hidden shadow-xl">
+                <!-- Canvas Control Header -->
+                <div class="bg-slate-900/80 px-6 py-4 border-b border-slate-800 flex flex-wrap items-center justify-between gap-2">
+                    <div class="flex items-center gap-3">
+                        <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                        <h2 class="font-bold text-slate-200 text-sm md:text-base">
+                            <span id="active-classroom-name" class="text-sky-400 font-black"></span> 배치도
+                        </h2>
+                        <!-- Area Indicator -->
+                        <span class="text-xs bg-slate-800 px-3 py-1 rounded-full text-slate-300 border border-slate-700 flex items-center gap-1.5">
+                            <i class="fa-solid fa-ruler-combined text-sky-400"></i> 면적: <span id="classroom-area-display" class="font-bold text-white"></span>
+                        </span>
+                    </div>
+                    <div class="text-xs text-slate-400 flex items-center gap-3">
+                        <span class="flex items-center gap-1"><i class="fa-solid fa-arrows-up-down-left-right text-slate-500"></i> 드래그로 이동</span>
+                        <span class="flex items-center gap-1"><i class="fa-solid fa-mouse-pointer text-slate-500"></i> 더블클릭 시 세트 변경</span>
+                    </div>
+                </div>
+
+                <!-- Canvas Body -->
+                <div class="relative w-full h-[750px] lg:h-[950px] bg-slate-950 canvas-grid overflow-hidden select-none" id="classroom-canvas">
+                    <!-- Classroom structures like Teacher Zone & Screen -->
+                    <div class="absolute top-2 left-1/2 -translate-x-1/2 bg-slate-800/80 border border-slate-700 px-8 py-2.5 rounded-b-xl text-xs font-bold text-slate-400 flex items-center gap-2 tracking-widest z-0">
+                        <i class="fa-solid fa-chalkboard text-slate-500"></i> 화이트 보드 / 스크린 영역
+                    </div>
+                    <div class="absolute bottom-2 left-4 bg-slate-900/60 border border-slate-800 px-4 py-1.5 rounded-lg text-2xs text-slate-500 z-0">
+                        출입구
+                    </div>
+
+                    <!-- 가운데 정렬 수강생 전용 구역 (직사각형 Zone 시각화 가이드라인 범위 확장: top 26% ~ bottom 8%로 수직 공간 증가) -->
+                    <div id="student-zone-guideline" class="absolute left-[15%] right-[15%] top-[26%] bottom-[8%] rounded-2xl border-2 border-dashed border-sky-500/20 bg-sky-500/[0.02] flex items-end justify-center pb-3 pointer-events-none transition-all duration-300">
+                        <span class="text-sky-500/30 text-3xs tracking-widest font-black uppercase flex items-center gap-1.5 select-none">
+                            <i class="fa-solid fa-table"></i> 수강생 데스크 배치 영역
+                        </span>
+                    </div>
+
+                    <!-- Loading overlay -->
+                    <div id="canvas-loading" class="absolute inset-0 bg-slate-950/80 backdrop-blur-sm flex flex-col items-center justify-center gap-4 z-40">
+                        <i class="fa-solid fa-circle-notch text-4xl text-sky-500 animate-spin"></i>
+                        <p class="text-sm font-bold text-slate-300">Supabase DB에서 강의실 정보를 불러오고 있습니다...</p>
+                    </div>
+
+                    <!-- Interactive Draggable Assets are dynamically injected here -->
+                </div>
+
+                <!-- Legend / Status Guide -->
+                <div class="bg-slate-900/50 px-6 py-3 border-t border-slate-800 flex flex-wrap gap-4 items-center justify-between text-xs">
+                    <div class="flex flex-wrap gap-x-4 gap-y-1.5">
+                        <span class="flex items-center gap-1.5 text-slate-400"><span class="w-3 h-3 rounded-sm bg-emerald-500/20 border border-emerald-500"></span> Full 세트 (본체+모니터+책상)</span>
+                        <span class="flex items-center gap-1.5 text-slate-400"><span class="w-3 h-3 rounded-sm bg-amber-500/20 border border-amber-500"></span> 부분 세트 (모니터+책상)</span>
+                        <span class="flex items-center gap-1.5 text-slate-400"><span class="w-3 h-3 rounded-sm bg-slate-700 border border-slate-600"></span> 데스크 단독</span>
+                        <span class="flex items-center gap-1.5 text-slate-400"><span class="w-3 h-3 rounded-sm bg-rose-500/20 border border-rose-500"></span> 장애/고장</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Specifications Table -->
+            <div class="bg-slate-900 rounded-2xl border border-slate-800 p-6 shadow-xl flex flex-col gap-4">
+                <div class="flex items-center justify-between">
+                    <h3 class="font-bold text-slate-200 text-sm md:text-base flex items-center gap-2">
+                        <i class="fa-solid fa-chart-pie text-sky-400"></i> 사양별 보유 현황 및 집계
+                    </h3>
+                    <span class="text-xs bg-slate-800 px-2.5 py-1 rounded-full text-slate-400 font-semibold" id="total-pc-count-badge">총 0대</span>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse text-xs md:text-sm">
+                        <thead>
+                            <tr class="border-b border-slate-800 text-slate-400">
+                                <th class="py-3 px-4 font-semibold">스펙 분류</th>
+                                <th class="py-3 px-4 font-semibold">상세 사양 (CPU / RAM / GPU / DISK)</th>
+                                <th class="py-3 px-4 font-semibold text-center">보유 수량</th>
+                                <th class="py-3 px-4 font-semibold text-right">비중</th>
+                            </tr>
+                        </thead>
+                        <tbody id="specs-summary-tbody" class="divide-y divide-slate-800 text-slate-300">
+                            <!-- Dynamic Rows -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+        </section>
+
+        <!-- RIGHT PANELS: Active Item Editor & Maintenance Log (4 columns) -->
+        <section class="lg:col-span-4 flex flex-col gap-6">
+            
+            <!-- Detail & Edit Asset Panel -->
+            <div class="bg-slate-900 rounded-2xl border border-slate-800 p-6 shadow-xl flex flex-col gap-4" id="detail-panel">
+                <div class="border-b border-slate-800 pb-3">
+                    <h3 class="font-bold text-slate-200 text-sm md:text-base flex items-center gap-2">
+                        <i class="fa-solid fa-sliders text-sky-400"></i> 선택한 장비 설정
+                    </h3>
+                    <p class="text-xs text-slate-400 mt-1">배치도에서 장비를 클릭하면 실시간으로 스펙 및 위치를 편집할 수 있습니다.</p>
+                </div>
+                
+                <div id="no-item-selected" class="py-12 text-center text-slate-500 flex flex-col items-center justify-center gap-3">
+                    <i class="fa-solid fa-mouse-pointer text-4xl"></i>
+                    <p class="text-sm">배치도에서 장비(아이콘)를<br>클릭하여 세부 설정을 변경하세요.</p>
+                </div>
+
+                <div id="item-editor-form" class="hidden flex flex-col gap-4 text-xs md:text-sm">
+                    <input type="hidden" id="edit-asset-id">
+                    
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-slate-400 font-semibold mb-1">장비 고유 ID</label>
+                            <input type="text" id="edit-asset-code" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white font-mono focus:border-sky-500 focus:outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-slate-400 font-semibold mb-1">장비 유형</label>
+                            <select id="edit-asset-type" onchange="toggleSpecInputs()" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white focus:border-sky-500 focus:outline-none">
+                                <option value="teacher_pc">강사 PC</option>
+                                <option value="student_pc">수강생 PC</option>
+                                <option value="screen">스크린</option>
+                                <option value="projector">빔프로젝터</option>
+                                <option value="tv">TV</option>
+                                <option value="locker">사물함</option>
+                                <option value="ac_ceiling">천장형 에어컨</option>
+                                <option value="ac_stand">스탠드 에어컨</option>
+                                <option value="fan">선풍기</option>
+                                <option value="circulator">벽걸이 서큘레이터</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- PC Exclusive Customization (PC Setup Status) -->
+                    <div id="pc-status-type-wrapper" class="bg-slate-950 p-3 rounded-xl border border-slate-800">
+                        <label class="block text-slate-400 font-semibold mb-1.5">PC 구성 세트 상태</label>
+                        <div class="grid grid-cols-3 gap-2">
+                            <button onclick="changePCSetType('full')" id="btn-set-full" class="py-2 px-1 rounded-lg border text-center font-bold text-2xs transition">Full 세트</button>
+                            <button onclick="changePCSetType('partial')" id="btn-set-partial" class="py-2 px-1 rounded-lg border text-center font-bold text-2xs transition">모니터+데스크</button>
+                            <button onclick="changePCSetType('desk')" id="btn-set-desk" class="py-2 px-1 rounded-lg border text-center font-bold text-2xs transition">데스크 단독</button>
+                        </div>
+                        <input type="hidden" id="edit-pc-set-type" value="full">
+                    </div>
+
+                    <!-- Technical Specs (Visible only for PCs) -->
+                    <div id="technical-specs-wrapper" class="flex flex-col gap-3">
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-slate-400 font-semibold mb-1">CPU</label>
+                                <input type="text" id="edit-spec-cpu" placeholder="예: Intel i7-13700" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white focus:border-sky-500 focus:outline-none">
+                            </div>
+                            <div>
+                                <label class="block text-slate-400 font-semibold mb-1">RAM</label>
+                                <input type="text" id="edit-spec-ram" placeholder="예: 32GB DDR5" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white focus:border-sky-500 focus:outline-none">
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-slate-400 font-semibold mb-1">GPU</label>
+                                <input type="text" id="edit-spec-gpu" placeholder="예: RTX 4060" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white focus:border-sky-500 focus:outline-none">
+                            </div>
+                            <div>
+                                <label class="block text-slate-400 font-semibold mb-1">SSD / HDD</label>
+                                <input type="text" id="edit-spec-disk" placeholder="예: NVMe 1TB" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white focus:border-sky-500 focus:outline-none">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-slate-400 font-semibold mb-1">동작 상태</label>
+                            <select id="edit-asset-status" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white focus:border-sky-500 focus:outline-none">
+                                <option value="active" class="text-emerald-500">정상 작동 (Active)</option>
+                                <option value="maintenance" class="text-amber-500">점검/유지보수 중</option>
+                                <option value="fault" class="text-rose-500">장애/고장 (Fault)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-slate-400 font-semibold mb-1">좌표 관리 (X, Y %)</label>
+                            <div class="grid grid-cols-2 gap-1">
+                                <input type="number" id="edit-pos-x" step="0.1" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-2 py-2 text-center text-white focus:border-sky-500 focus:outline-none">
+                                <input type="number" id="edit-pos-y" step="0.1" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-2 py-2 text-center text-white focus:border-sky-500 focus:outline-none">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="flex gap-2 mt-2">
+                        <button onclick="saveAssetEdits()" class="flex-1 bg-sky-600 hover:bg-sky-500 text-white font-bold py-2.5 rounded-lg transition duration-200">
+                            설정 저장
+                        </button>
+                        <button onclick="deleteAsset()" class="bg-rose-950/40 hover:bg-rose-900 border border-rose-800 text-rose-300 font-bold px-4 py-2.5 rounded-lg transition duration-200" title="장비 삭제">
+                            <i class="fa-regular fa-trash-can"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Classroom Area Control Panel -->
+            <div class="bg-slate-900 rounded-2xl border border-slate-800 p-6 shadow-xl flex flex-col gap-3">
+                <h3 class="font-bold text-slate-200 text-sm flex items-center gap-2">
+                    <i class="fa-solid fa-ruler-combined text-sky-400"></i> 현재 강의실 면적 설정
+                </h3>
+                <div class="grid grid-cols-2 gap-3 text-xs md:text-sm">
+                    <div>
+                        <label class="block text-slate-400 mb-1">제곱미터 (㎡)</label>
+                        <input type="number" id="input-area-m2" oninput="convertArea('m2')" placeholder="예: 66" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white focus:border-sky-500 focus:outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-slate-400 mb-1">평수 (평)</label>
+                        <input type="number" id="input-area-pyoung" oninput="convertArea('pyoung')" placeholder="예: 20" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white focus:border-sky-500 focus:outline-none">
+                    </div>
+                </div>
+                <button onclick="saveClassroomArea()" class="bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold py-2 rounded-lg text-xs border border-slate-700 transition">
+                    면적 정보 저장
+                </button>
+            </div>
+
+            <!-- Maintenance & Repair Log Manager -->
+            <div class="bg-slate-900 rounded-2xl border border-slate-800 p-6 shadow-xl flex-1 flex flex-col gap-4">
+                <div class="border-b border-slate-800 pb-3 flex items-center justify-between">
+                    <div>
+                        <h3 class="font-bold text-slate-200 text-sm md:text-base flex items-center gap-2">
+                            <i class="fa-solid fa-clipboard-list text-sky-400"></i> 강의실 유지보수 내역
+                        </h3>
+                        <p class="text-xs text-slate-400 mt-1">장비 고장 및 수리 일정을 실시간 등록하고 조회합니다.</p>
+                    </div>
+                    <button onclick="toggleLogForm()" class="bg-slate-800 hover:bg-slate-700 text-xs text-sky-400 font-semibold px-2.5 py-1.5 rounded-md border border-slate-700">
+                        <i class="fa-solid fa-plus mr-0.5"></i> 등록
+                    </button>
+                </div>
+
+                <!-- Add Log Mini-Form -->
+                <div id="new-log-form" class="hidden bg-slate-950 p-4 rounded-xl border border-slate-800 flex flex-col gap-3 text-xs">
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="block text-slate-400 mb-1">수리 장비 ID</label>
+                            <input type="text" id="log-asset-id" placeholder="예: PC-12" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-2 text-white focus:outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-slate-400 mb-1">작업 날짜</label>
+                            <input type="date" id="log-date" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-2 text-white focus:outline-none">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-slate-400 mb-1">상세 작업 내용</label>
+                        <textarea id="log-desc" rows="2" placeholder="예: 메인보드 고장으로 콘덴서 교환 및 부팅 테스트 완료" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-2 text-white focus:outline-none resize-none"></textarea>
+                    </div>
+                    <div class="flex gap-2">
+                        <button onclick="addMaintenanceLog()" class="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2 rounded-lg transition">로그 등록</button>
+                        <button onclick="toggleLogForm()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-2 rounded-lg transition">취소</button>
+                    </div>
+                </div>
+
+                <!-- Log list Container -->
+                <div class="flex-1 overflow-y-auto max-h-[220px] space-y-3" id="maintenance-logs-list">
+                    <!-- Logs dynamically appended here -->
+                </div>
+            </div>
+
+        </section>
+
+    </main>
+
+    <!-- Custom Popup/Modal Box to replace alert() -->
+    <div id="custom-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm hidden items-center justify-center p-4 z-50">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl animate-in fade-in zoom-in duration-200">
+            <div class="p-6 text-center flex flex-col items-center gap-4">
+                <div class="w-12 h-12 rounded-full bg-sky-500/10 text-sky-400 flex items-center justify-center text-xl" id="modal-icon">
+                    <i class="fa-solid fa-circle-info"></i>
+                </div>
+                <div>
+                    <h3 class="font-bold text-white text-base md:text-lg" id="modal-title">알림</h3>
+                    <p class="text-xs md:text-sm text-slate-400 mt-2 whitespace-pre-line" id="modal-desc">내용을 입력해주세요.</p>
+                </div>
+            </div>
+            <div class="bg-slate-950 p-4 flex gap-2 border-t border-slate-800">
+                <button onclick="closeModal()" class="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold py-2.5 rounded-xl border border-slate-700 transition">
+                    확인
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- NEW: SELECT ASSET TYPE & COUNT TO ADD MODAL -->
+    <div id="add-asset-modal" class="fixed inset-0 bg-slate-950/85 backdrop-blur-sm hidden items-center justify-center p-4 z-50">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl animate-in fade-in zoom-in duration-200">
+            <div class="p-6 border-b border-slate-800">
+                <h3 class="font-bold text-white text-base md:text-lg flex items-center gap-2">
+                    <i class="fa-solid fa-circle-plus text-sky-400"></i> 추가할 장비 설정
+                </h3>
+                <p class="text-xs text-slate-400 mt-1">강의실에 새로 배치할 장비의 유형과 개수를 선택해 주세요.</p>
+            </div>
+            
+            <div class="p-6 border-b border-slate-800 bg-slate-950/40">
+                <label class="block text-xs font-bold text-slate-400 mb-2">추가할 수량 (개수)</label>
+                <div class="flex items-center gap-3">
+                    <button onclick="adjustAddCount(-1)" class="w-10 h-10 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 font-extrabold text-lg flex items-center justify-center">-</button>
+                    <input type="number" id="add-asset-count" value="1" min="1" max="50" class="w-20 h-10 bg-slate-900 border border-slate-700 text-center font-bold text-lg rounded-lg focus:outline-none focus:border-sky-500">
+                    <button onclick="adjustAddCount(1)" class="w-10 h-10 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 font-extrabold text-lg flex items-center justify-center">+</button>
+                    <span class="text-xs text-slate-500">개 연속 추가</span>
+                </div>
+            </div>
+            
+            <div class="p-6 grid grid-cols-2 gap-3" id="asset-type-selectors">
+                <!-- Selectable buttons -->
+                <button onclick="createNewAssetBatch('student_pc')" class="flex flex-col items-center gap-2 p-4 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded-xl transition text-center group">
+                    <i class="fa-solid fa-desktop text-2xl text-emerald-400 group-hover:scale-110 transition"></i>
+                    <span class="text-xs font-bold">수강생 PC</span>
+                </button>
+                <button onclick="createNewAssetBatch('teacher_pc')" class="flex flex-col items-center gap-2 p-4 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded-xl transition text-center group">
+                    <i class="fa-solid fa-computer text-2xl text-sky-400 group-hover:scale-110 transition"></i>
+                    <span class="text-xs font-bold">강사 PC</span>
+                </button>
+                <button onclick="createNewAssetBatch('ac_ceiling')" class="flex flex-col items-center gap-2 p-4 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded-xl transition text-center group">
+                    <i class="fa-solid fa-snowflake text-2xl text-cyan-400 group-hover:scale-110 transition"></i>
+                    <span class="text-xs font-bold">천장형 에어컨</span>
+                </button>
+                <button onclick="createNewAssetBatch('ac_stand')" class="flex flex-col items-center gap-2 p-4 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded-xl transition text-center group">
+                    <i class="fa-solid fa-temperature-low text-2xl text-blue-400 group-hover:scale-110 transition"></i>
+                    <span class="text-xs font-bold">스탠드 에어컨</span>
+                </button>
+                <button onclick="createNewAssetBatch('fan')" class="flex flex-col items-center gap-2 p-4 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded-xl transition text-center group">
+                    <i class="fa-solid fa-wind text-2xl text-teal-400 group-hover:scale-110 transition"></i>
+                    <span class="text-xs font-bold">선풍기</span>
+                </button>
+                <button onclick="createNewAssetBatch('circulator')" class="flex flex-col items-center gap-2 p-4 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded-xl transition text-center group">
+                    <i class="fa-solid fa-fan text-2xl text-emerald-400 group-hover:scale-110 transition"></i>
+                    <span class="text-xs font-bold">벽걸이 서큘레이터</span>
+                </button>
+                <button onclick="createNewAssetBatch('tv')" class="flex flex-col items-center gap-2 p-4 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded-xl transition text-center group">
+                    <i class="fa-solid fa-tv text-2xl text-indigo-400 group-hover:scale-110 transition"></i>
+                    <span class="text-xs font-bold">TV</span>
+                </button>
+                <button onclick="createNewAssetBatch('projector')" class="flex flex-col items-center gap-2 p-4 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded-xl transition text-center group">
+                    <i class="fa-solid fa-video text-2xl text-purple-400 group-hover:scale-110 transition"></i>
+                    <span class="text-xs font-bold">빔프로젝터</span>
+                </button>
+                <button onclick="createNewAssetBatch('screen')" class="flex flex-col items-center gap-2 p-4 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded-xl transition text-center group">
+                    <i class="fa-solid fa-chalkboard-user text-2xl text-amber-400 group-hover:scale-110 transition"></i>
+                    <span class="text-xs font-bold">스크린</span>
+                </button>
+                <button onclick="createNewAssetBatch('locker')" class="flex flex-col items-center gap-2 p-4 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded-xl transition text-center group">
+                    <i class="fa-solid fa-box-archive text-2xl text-slate-400 group-hover:scale-110 transition"></i>
+                    <span class="text-xs font-bold">사물함</span>
+                </button>
+            </div>
+            
+            <div class="bg-slate-950 p-4 flex border-t border-slate-800">
+                <button onclick="closeAddAssetModal()" class="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold py-2.5 rounded-xl border border-slate-700 transition">
+                    취소
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Optional local Supabase key (do NOT commit `supabase-config.js` to VCS) -->
+    <script src="./supabase-config.js" defer></script>
+
+    <!-- CORE JAVASCRIPT LOGIC -->
+    <script>
+        // Supabase 연동 정보 설정
+        const supabaseUrl = 'https://vncwbgsftfhxgwqaigxt.supabase.co';
+
+        // 보안 조치: 익명(anon) 키는 소스에 하드코딩하지 않습니다.
+        // - 프로덕션에서는 서버사이드에서 익명 키를 제공하는 엔드포인트('/api/supabase-key')를 구성하세요.
+        // - 또는 빌드/호스팅 환경에서 `window.__SUPABASE_ANON_KEY__`로 주입하여 사용하세요.
+        // 클라이언트에서 직접 키가 없는 경우 로컬 오프라인 데이터로 폴백됩니다.
+        let supabaseClient = null;
+
+        // 1. STATE VARIABLES
+        let activeFloor = '4층';
+        let activeClassroom = '401호';
+        
+        // Floor & Rooms map structure
+        const structure = {
+            '4층': ['401호', '402호'],
+            '5층': ['501호', '502호'],
+            '6층': ['601호', '602호', '603호'],
+            '7층': ['701호']
+        };
+
+        // Custom room areas (m2 and pyoung defaults)
+        let classroomAreas = {
+            '401호': { m2: 72, pyoung: 22 },
+            '402호': { m2: 99, pyoung: 30 },
+            '501호': { m2: 72, pyoung: 22 },
+            '502호': { m2: 99, pyoung: 30 },
+            '601호': { m2: 72, pyoung: 22 },
+            '602호': { m2: 99, pyoung: 30 },
+            '603호': { m2: 82, pyoung: 25 },
+            '701호': { m2: 72, pyoung: 22 }
+        };
+
+        let assets = [];
+        let maintenanceLogs = [];
+
+        let selectedAssetId = null;
+        let isDragging = false;
+        let dragItem = null;
+        let dragOffset = { x: 0, y: 0 };
+
+        // 각 강의실별 물리적인 고정 격자 좌석 좌표 뼈대 리스트 생성기
+        function getStudentSlots(classroomName) {
+            const isVerticalGrid = ['401호', '501호', '601호', '701호'].includes(classroomName);
+            const cols = isVerticalGrid ? 4 : 8;
+            const rows = isVerticalGrid ? 7 : 4;
+            const startX = 17.5;
+            const endX = 73.5; 
+            const startY = 28.5;
+            const endY = 85.5;
+
+            let slots = [];
+            for (let r = 0; r < rows; r++) {
+                for (let c = 0; c < cols; c++) {
+                    const x = cols > 1 ? startX + (c * (endX - startX) / (cols - 1)) : 50;
+                    const y = rows > 1 ? startY + (r * (endY - startY) / (rows - 1)) : 60;
+                    slots.push({
+                        index: r * cols + c + 1,
+                        x: parseFloat(x.toFixed(1)),
+                        y: parseFloat(y.toFixed(1))
+                    });
+                }
+            }
+            return slots;
+        }
+
+        // Supabase 중복 ID 키 에러를 원천 차단하기 위한 수강생 PC 일괄 재정렬 기입 트랜잭션
+        async function syncStudentPCsToDb(classroomName) {
+            if (!supabaseClient) return;
+            try {
+                // 1. 해당 호실의 기존 수강생 PC 데이터 삭제
+                await supabaseClient.from('assets').delete().eq('classroom', classroomName).eq('type', 'student_pc');
+                
+                // 2. 현재 로컬 메모리 배열에 바뀐 순서대로 정렬된 수강생 PC들만 다시 삽입
+                const roomPCs = assets.filter(a => a.classroom === classroomName && a.type === 'student_pc');
+                if (roomPCs.length > 0) {
+                    const dbArray = roomPCs.map(mapToDb);
+                    const { error } = await supabaseClient.from('assets').insert(dbArray);
+                    if (error) throw error;
+                }
+            } catch (err) {
+                console.error("수강생 PC 동기화 트랜잭션 오류:", err);
+            }
+        }
+
+        // 2. BOOTSTRAP INITIALIZATION
+        window.onload = function() {
+            renderFloorTabs();
+            renderRoomTabs();
+            setupGlobalDragListeners();
+            loadAllDataFromSupabase();
+        }
+
+        // ==========================================
+        // [SUPABASE DATABASE INTEGRATION ENGINE]
+        // ==========================================
+
+        // 데이터베이스와의 동기화 상태 표시 제어기
+        function setCloudStatus(status) {
+            const badge = document.getElementById('cloud-sync-badge');
+            if (!badge) return;
+            badge.classList.remove('hidden');
+            if (status === 'loading') {
+                badge.innerHTML = `<span class="w-1.5 h-1.5 bg-amber-400 rounded-full animate-ping"></span><span class="text-amber-300">클라우드 데이터 동기화 중...</span>`;
+                badge.className = "flex items-center gap-1.5 text-2xs text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2.5 py-1.5 rounded-lg font-bold";
+            } else if (status === 'saved') {
+                badge.innerHTML = `<span class="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse"></span><span class="text-emerald-300">클라우드 동기화 완료</span>`;
+                badge.className = "flex items-center gap-1.5 text-2xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1.5 rounded-lg font-bold";
+            } else if (status === 'error') {
+                badge.innerHTML = `<span class="w-1.5 h-1.5 bg-rose-500 rounded-full"></span><span class="text-rose-400">오프라인 모드 (연동 오류)</span>`;
+                badge.className = "flex items-center gap-1.5 text-2xs text-rose-400 bg-rose-500/10 border border-rose-500/20 px-2.5 py-1.5 rounded-lg font-bold";
+            }
+        }
+
+        // Supabase DB <---> 로컬 JS 데이터 구조 맵퍼
+        function mapToDb(asset) {
+            return {
+                id: asset.id,
+                classroom: asset.classroom,
+                type: asset.type,
+                label: asset.label,
+                x: asset.x,
+                y: asset.y,
+                status: asset.status,
+                pc_set_type: asset.pcSetType || null,
+                cpu: asset.cpu || null,
+                ram: asset.ram || null,
+                gpu: asset.gpu || null,
+                disk: asset.disk || null
+            };
+        }
+
+        function mapFromDb(dbAsset) {
+            return {
+                id: dbAsset.id,
+                classroom: dbAsset.classroom,
+                type: dbAsset.type,
+                label: dbAsset.label,
+                x: dbAsset.x,
+                y: dbAsset.y,
+                status: dbAsset.status,
+                pcSetType: dbAsset.pc_set_type || 'full',
+                cpu: dbAsset.cpu || '',
+                ram: dbAsset.ram || '',
+                gpu: dbAsset.gpu || '',
+                disk: dbAsset.disk || ''
+            };
+        }
+
+        // Supabase 전체 데이터 일괄 로드
+        async function loadAllDataFromSupabase() {
+            // 런타임에서 익명 키를 안전하게 가져와 Supabase 클라이언트를 초기화 시도
+            if (!supabaseClient && window.supabase) {
+                try {
+                    // 1) 우선 서버사이드 엔드포인트를 통해 키를 요청
+                    const resp = await fetch('/api/supabase-key', { cache: 'no-store' });
+                    if (resp.ok) {
+                        const json = await resp.json();
+                        const key = json?.anonKey || json?.key || null;
+                        if (key) {
+                            supabaseClient = window.supabase.createClient(supabaseUrl, key);
+                        }
+                    }
+
+                    // 2) 개발/로컬 환경에서 필요하면 호스트가 스크립트 전역으로 주입한 키 사용
+                    if (!supabaseClient && window.__SUPABASE_ANON_KEY__) {
+                        supabaseClient = window.supabase.createClient(supabaseUrl, window.__SUPABASE_ANON_KEY__);
+                    }
+                } catch (err) {
+                    // 실패 시 아무 작업도 하지 않고 아래의 폴백 로직으로 이동
+                    console.warn('Supabase anon key fetch failed:', err);
+                }
+            }
+
+            if (!supabaseClient) {
+                setCloudStatus('error');
+                document.getElementById('canvas-loading').classList.add('hidden');
+                generateDefaultLocalData();
+                return;
+            }
+
+            try {
+                setCloudStatus('loading');
+                document.getElementById('canvas-loading').classList.remove('hidden');
+
+                // 1. 장비 데이터 로드 (assets 테이블 연동)
+                const { data: dbAssets, error: assetError } = await supabaseClient
+                    .from('assets')
+                    .select('*');
+
+                if (assetError) throw assetError;
+
+                // 2. 유지보수 로그 로드 (logs 테이블 연동)
+                const { data: dbLogs, error: logError } = await supabaseClient
+                    .from('logs')
+                    .select('*')
+                    .order('created_at', { ascending: false });
+
+                if (logError && logError.code !== 'PGRST116') {
+                    console.warn("logs 테이블 조회 중 오류:", logError);
+                }
+
+                // 3. 데이터 바인딩
+                if (dbAssets && dbAssets.length > 0) {
+                    assets = dbAssets.map(mapFromDb);
+                } else {
+                    assets = [];
+                }
+
+                if (dbLogs && dbLogs.length > 0) {
+                    maintenanceLogs = dbLogs.map(log => ({
+                        id: log.id,
+                        classroom: log.classroom,
+                        assetId: log.asset_id,
+                        date: log.date,
+                        desc: log.desc_text
+                    }));
+                } else {
+                    maintenanceLogs = [];
+                }
+
+                setCloudStatus('saved');
+                document.getElementById('canvas-loading').classList.add('hidden');
+
+                // UI 동기화
+                switchClassroom(activeClassroom);
+
+            } catch (err) {
+                console.error("Supabase 데이터 로드 실패: ", err);
+                setCloudStatus('error');
+                document.getElementById('canvas-loading').classList.add('hidden');
+                
+                // 테이블이 없거나 네트워크 에러 시 임시 가상 데이터 주입
+                generateDefaultLocalData();
+                switchClassroom(activeClassroom);
+                showModal('오프라인 데이터 모드', 'Supabase 연결에 실패했습니다. \n임시 가상 오프라인 데이터로 구동합니다.');
+            }
+        }
+
+        // 로컬 임시 가상 데이터 주입용 (Supabase 미연결 대비 백업)
+        function generateDefaultLocalData() {
+            assets = [];
+            const rooms = ['401호', '402호', '501호', '502호', '601호', '602호', '603호', '701호'];
+            rooms.forEach(room => {
+                const roomNum = room.replace('호', '');
+                
+                // 1. 강사 PC (상단에 겹치지 않게 여유롭게 배치)
+                assets.push({
+                    id: `${roomNum}-T01`, classroom: room, type: 'teacher_pc', label: '강사 PC', x: 50, y: 13, status: 'active', pcSetType: 'full', cpu: 'Intel Core i9-13900', ram: '64GB DDR5', gpu: 'RTX 4080', disk: 'NVMe SSD 2TB'
+                });
+                
+                // 2. 가변적인 편의 및 에어컨 자산 설정 (교탁 양옆 및 벽면 배치)
+                assets.push({ id: `${roomNum}-ACC1`, classroom: room, type: 'ac_ceiling', label: '천장형 01', x: 8, y: 14, status: 'active' });
+                assets.push({ id: `${roomNum}-ACS1`, classroom: room, type: 'ac_stand', label: '스탠드 01', x: 6, y: 80, status: 'active' });
+                assets.push({ id: `${roomNum}-FN1`, classroom: room, type: 'fan', label: '선풍기 01', x: 91, y: 35, status: 'active' });
+                assets.push({ id: `${roomNum}-CIR1`, classroom: room, type: 'circulator', label: '서큘레이터 01', x: 91, y: 55, status: 'active' });
+                assets.push({ id: `${roomNum}-TV1`, classroom: room, type: 'tv', label: '대형 TV', x: 25, y: 13, status: 'active' });
+                assets.push({ id: `${roomNum}-LK1`, classroom: room, type: 'locker', label: '사물함', x: 91, y: 80, status: 'active' });
+                assets.push({ id: `${roomNum}-PR1`, classroom: room, type: 'projector', label: '빔프로젝터', x: 50, y: 22, status: 'active' });
+
+                // 고정된 격자 뼈대를 가져와서 대입하므로 초기 배치 시에도 절대 어긋나거나 튀어나가지 않음
+                const slots = getStudentSlots(room);
+                const isVerticalGrid = ['401호', '501호', '601호', '701호'].includes(room);
+                const maxInitialPCs = isVerticalGrid ? 24 : 20;
+
+                for (let i = 0; i < Math.min(slots.length, maxInitialPCs); i++) {
+                    const slot = slots[i];
+                    assets.push({
+                        id: `${roomNum}-S${String(slot.index).padStart(2, '0')}`,
+                        classroom: room, 
+                        type: 'student_pc', 
+                        label: `수강생-${String(slot.index).padStart(2, '0')}`,
+                        x: slot.x, 
+                        y: slot.y,
+                        status: 'active', 
+                        pcSetType: 'full', 
+                        cpu: isVerticalGrid ? 'Intel Core i7-13700' : 'Intel Core i5-12400', 
+                        ram: isVerticalGrid ? '32GB DDR5' : '16GB DDR4', 
+                        gpu: isVerticalGrid ? 'RTX 4060' : 'RTX 3060', 
+                        disk: isVerticalGrid ? 'NVMe SSD 1TB' : 'NVMe SSD 512GB'
+                    });
+                }
+            });
+            maintenanceLogs = [
+                { id: 1, classroom: '401호', assetId: '401-S12', date: '2026-06-30', desc: '모니터 케이블 무상교환' }
+            ];
+        }
+
+        // DB 일괄 쓰기 트래픽 (초기 데이터 밀어넣기)
+        async function seedDatabasePrompt() {
+            if (!supabaseClient) {
+                showModal('연동 필요', 'Supabase에 연결되어있지 않아 로컬 상태만 초기화합니다.');
+                generateDefaultLocalData();
+                switchClassroom(activeClassroom);
+                return;
+            }
+
+            try {
+                setCloudStatus('loading');
+                document.getElementById('canvas-loading').classList.remove('hidden');
+
+                generateDefaultLocalData();
+
+                const dbAssetsArray = assets.map(mapToDb);
+                
+                await supabaseClient.from('assets').delete().neq('id', 'WIP_WIP_WIP');
+
+                const { error: insertErr } = await supabaseClient
+                    .from('assets')
+                    .insert(dbAssetsArray);
+
+                if (insertErr) throw insertErr;
+
+                setCloudStatus('saved');
+                document.getElementById('canvas-loading').classList.add('hidden');
+                switchClassroom(activeClassroom);
+                showModal('데이터 생성 성공', '수강생 정렬 직사각형 가이드 배치가 완벽하게 Supabase 클라우드에 갱신되었습니다!');
+
+            } catch (err) {
+                console.error("데이터 생성 실패:", err);
+                setCloudStatus('error');
+                document.getElementById('canvas-loading').classList.add('hidden');
+                showModal('오류 발생', '데이터 주입 도중 문제가 생겼습니다.');
+            }
+        }
+
+        // 개별 장비 실시간 저장 (assets 테이블 Upsert)
+        async function saveAssetToSupabase(asset) {
+            if (!supabaseClient) return;
+            try {
+                setCloudStatus('loading');
+                const { error } = await supabaseClient
+                    .from('assets')
+                    .upsert(mapToDb(asset));
+
+                if (error) throw error;
+                setCloudStatus('saved');
+            } catch (err) {
+                console.error("장비 저장 중 에러:", err);
+                setCloudStatus('error');
+            }
+        }
+
+        // 개별 장비 실시간 제거 (assets 테이블 Delete)
+        async function deleteAssetFromSupabase(assetId) {
+            if (!supabaseClient) return;
+            try {
+                setCloudStatus('loading');
+                const { error } = await supabaseClient
+                    .from('assets')
+                    .delete()
+                    .eq('id', assetId);
+
+                if (error) throw error;
+                setCloudStatus('saved');
+            } catch (err) {
+                console.error("장비 제거 에러:", err);
+                setCloudStatus('error');
+            }
+        }
+
+        // ==========================================
+        // [FLOOR AND ROOM RENDERERS]
+        // ==========================================
+        function renderFloorTabs() {
+            const floorContainer = document.getElementById('floor-tabs');
+            floorContainer.innerHTML = '';
+            
+            Object.keys(structure).forEach(floor => {
+                const isActive = floor === activeFloor;
+                const activeClasses = isActive 
+                    ? 'bg-sky-600 text-white shadow-md shadow-sky-950/40' 
+                    : 'text-slate-400 hover:text-slate-100 hover:bg-slate-900/50';
+                
+                floorContainer.innerHTML += `
+                    <button onclick="switchFloor('${floor}')" class="px-4 py-1.5 text-xs font-black rounded-lg transition-all duration-200 ${activeClasses}">
+                        ${floor}
+                    </button>
+                `;
+            });
+        }
+
+        function renderRoomTabs() {
+            const roomContainer = document.getElementById('classroom-tabs');
+            roomContainer.innerHTML = '';
+            
+            const rooms = structure[activeFloor] || [];
+            rooms.forEach(room => {
+                const isActive = room === activeClassroom;
+                const activeClasses = isActive 
+                    ? 'bg-sky-600 text-white shadow-md shadow-sky-950/40' 
+                    : 'text-slate-400 hover:text-slate-100 hover:bg-slate-900/50';
+                
+                roomContainer.innerHTML += `
+                    <button onclick="switchClassroom('${room}')" class="px-4 py-1.5 text-xs font-black rounded-lg transition-all duration-200 ${activeClasses}">
+                        ${room}
+                    </button>
+                `;
+            });
+        }
+
+        function switchFloor(floor) {
+            activeFloor = floor;
+            const firstRoom = structure[floor][0];
+            switchClassroom(firstRoom);
+            renderFloorTabs();
+        }
+
+        function switchClassroom(roomName) {
+            activeClassroom = roomName;
+            document.getElementById('active-classroom-name').innerText = roomName;
+            
+            const area = classroomAreas[roomName] || { m2: 0, pyoung: 0 };
+            document.getElementById('classroom-area-display').innerText = `${area.m2}㎡ (${area.pyoung}평)`;
+            document.getElementById('input-area-m2').value = area.m2;
+            document.getElementById('input-area-pyoung').value = area.pyoung;
+
+            renderRoomTabs();
+            renderStats();
+            renderCanvas();
+            renderSpecsTable();
+            renderMaintenanceLogs();
+            deselectAsset();
+        }
+
+        function renderStats() {
+            const currentAssets = assets.filter(a => a.classroom === activeClassroom);
+            const pcs = currentAssets.filter(a => a.type === 'student_pc' || a.type === 'teacher_pc');
+            
+            const totalPCs = pcs.length;
+            const activePCs = pcs.filter(p => p.status === 'active').length;
+            const maintenancePCs = pcs.filter(p => p.status === 'maintenance').length;
+            const faultPCs = pcs.filter(p => p.status === 'fault').length;
+
+            const statsContainer = document.getElementById('stats-summary');
+            statsContainer.innerHTML = `
+                <!-- Total PCs -->
+                <div class="bg-slate-900 border border-slate-800 p-4 rounded-2xl flex items-center justify-between shadow-lg">
+                    <div>
+                        <span class="text-2xs font-extrabold text-slate-500 tracking-wider">총 관리 PC</span>
+                        <h4 class="text-2xl font-black text-white mt-1">${totalPCs}대</h4>
+                    </div>
+                    <div class="bg-slate-800 p-3 rounded-xl text-slate-400">
+                        <i class="fa-solid fa-desktop text-lg"></i>
+                    </div>
+                </div>
+                <!-- Normal Status -->
+                <div class="bg-slate-900 border border-slate-800 p-4 rounded-2xl flex items-center justify-between shadow-lg">
+                    <div>
+                        <span class="text-2xs font-extrabold text-slate-500 tracking-wider">정상 작동 PC</span>
+                        <h4 class="text-2xl font-black text-emerald-400 mt-1">${activePCs}대</h4>
+                    </div>
+                    <div class="bg-emerald-500/10 p-3 rounded-xl text-emerald-400 border border-emerald-500/10">
+                        <i class="fa-solid fa-circle-check text-lg"></i>
+                    </div>
+                </div>
+                <!-- Maintenance Status -->
+                <div class="bg-slate-900 border border-slate-800 p-4 rounded-2xl flex items-center justify-between shadow-lg">
+                    <div>
+                        <span class="text-2xs font-extrabold text-slate-500 tracking-wider">점검/수리 중</span>
+                        <h4 class="text-2xl font-black text-amber-400 mt-1">${maintenancePCs}대</h4>
+                    </div>
+                    <div class="bg-amber-500/10 p-3 rounded-xl text-amber-400 border border-amber-500/10">
+                        <i class="fa-solid fa-screwdriver-wrench text-lg"></i>
+                    </div>
+                </div>
+                <!-- Fault Status -->
+                <div class="bg-slate-900 border border-slate-800 p-4 rounded-2xl flex items-center justify-between shadow-lg">
+                    <div>
+                        <span class="text-2xs font-extrabold text-slate-500 tracking-wider">장애/고장 발생</span>
+                        <h4 class="text-2xl font-black text-rose-400 mt-1">${faultPCs}대</h4>
+                    </div>
+                    <div class="bg-rose-500/10 p-3 rounded-xl text-rose-400 border border-rose-500/10">
+                        <i class="fa-solid fa-triangle-exclamation text-lg"></i>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderCanvas() {
+            const canvas = document.getElementById('classroom-canvas');
+            const currentItems = canvas.querySelectorAll('.draggable-asset');
+            currentItems.forEach(item => item.remove());
+
+            const activeAssets = assets.filter(a => a.classroom === activeClassroom);
+
+            activeAssets.forEach(asset => {
+                const element = document.createElement('div');
+                element.className = 'absolute draggable-asset cursor-pointer group select-none z-10';
+                element.style.left = asset.x + '%';
+                element.style.top = asset.y + '%';
+                element.style.transform = 'translate(-50%, -50%)'; // 중심점 정렬로 마그네틱 흡입 정확도 향상
+                element.setAttribute('data-id', asset.id);
+
+                let iconClass = 'fa-desktop';
+                let borderTheme = 'border-slate-700 bg-slate-900/95 text-slate-300';
+
+                // PC와 가전 분리 테마 매핑 (일체형 테두리 및 배경 적용)
+                if (asset.type === 'student_pc' || asset.type === 'teacher_pc') {
+                    if (asset.pcSetType === 'full') {
+                        iconClass = 'fa-computer';
+                        borderTheme = asset.status === 'fault' 
+                            ? 'border-rose-500 bg-rose-950/80 text-rose-400 shadow-md shadow-rose-950/40' 
+                            : asset.status === 'maintenance' 
+                                ? 'border-amber-500 bg-amber-950/80 text-amber-400' 
+                                : 'border-emerald-500/70 bg-slate-900/95 text-emerald-400 shadow-sm shadow-emerald-950/20';
+                    } else if (asset.pcSetType === 'partial') {
+                        iconClass = 'fa-desktop';
+                        borderTheme = 'border-amber-500 bg-slate-900 text-amber-300';
+                    } else {
+                        iconClass = 'fa-table';
+                        borderTheme = 'border-slate-600 bg-slate-800 text-slate-400';
+                    }
+
+                    if (asset.type === 'teacher_pc') {
+                        borderTheme += ' ring-2 ring-sky-500 ring-offset-1 ring-offset-slate-950';
+                    }
+                } else if (asset.type === 'ac_ceiling') {
+                    iconClass = 'fa-snowflake';
+                    borderTheme = 'border-cyan-500/40 bg-slate-900 text-cyan-400';
+                } else if (asset.type === 'ac_stand') {
+                    iconClass = 'fa-temperature-low';
+                    borderTheme = 'border-blue-500/40 bg-slate-900 text-blue-400';
+                } else if (asset.type === 'fan') {
+                    iconClass = 'fa-wind';
+                    borderTheme = 'border-teal-500/40 bg-slate-900 text-teal-400';
+                } else if (asset.type === 'circulator') {
+                    iconClass = 'fa-fan';
+                    borderTheme = 'border-emerald-500/40 bg-slate-900 text-emerald-400';
+                } else if (asset.type === 'tv') {
+                    iconClass = 'fa-tv';
+                    borderTheme = 'border-indigo-500/40 bg-slate-900 text-indigo-400';
+                } else if (asset.type === 'locker') {
+                    iconClass = 'fa-box-archive';
+                    borderTheme = 'border-slate-700 bg-slate-900 text-slate-300';
+                } else if (asset.type === 'projector') {
+                    iconClass = 'fa-video';
+                    borderTheme = 'border-purple-500/40 bg-slate-900 text-purple-400';
+                } else if (asset.type === 'screen') {
+                    iconClass = 'fa-chalkboard-user';
+                    borderTheme = 'border-sky-500/40 bg-slate-900 text-sky-400';
+                }
+
+                if (asset.id === selectedAssetId) {
+                    borderTheme += ' ring-4 ring-sky-500 ring-offset-1 ring-offset-slate-950 scale-105 z-30 shadow-2xl';
+                }
+
+                // 축약형 명칭 매핑 (가로 겹침 및 글자 오버헤드 극복)
+                let shortLabel = asset.label || asset.id;
+                if (shortLabel.startsWith('수강생-')) {
+                    shortLabel = 'S-' + shortLabel.split('-')[1];
+                }
+
+                element.innerHTML = `
+                    <div class="asset-card ${borderTheme}">
+                        <div class="flex items-center justify-center pt-1">
+                            <i class="fa-solid ${iconClass} text-lg"></i>
+                        </div>
+                        <span class="text-[10px] leading-none font-bold tracking-tight truncate w-full pb-0.5 opacity-90 px-1">
+                            ${shortLabel}
+                        </span>
+                    </div>
+                `;
+
+                setupDragEvents(element, asset);
+                canvas.appendChild(element);
+            });
+        }
+
+        function setupDragEvents(element, asset) {
+            const handleStart = function(clientX, clientY) {
+                selectAsset(asset.id);
+                isDragging = true;
+                dragItem = element;
+
+                const itemRect = element.getBoundingClientRect();
+                // 중심점 정렬 상태에 맞춘 드래그 오프셋 계산으로 튀는 현상 제어
+                dragOffset.x = clientX - (itemRect.left + itemRect.width / 2);
+                dragOffset.y = clientY - (itemRect.top + itemRect.height / 2);
+
+                element.style.zIndex = '50';
+            };
+
+            element.addEventListener('mousedown', function(e) {
+                if (e.button !== 0) return; 
+                handleStart(e.clientX, e.clientY);
+                e.preventDefault();
+                e.stopPropagation();
+            });
+
+            element.addEventListener('touchstart', function(e) {
+                const touch = e.touches[0];
+                handleStart(touch.clientX, touch.clientY);
+                e.stopPropagation();
+            }, { passive: true });
+
+            element.addEventListener('dblclick', function(e) {
+                e.stopPropagation();
+                if (asset.type === 'student_pc' || asset.type === 'teacher_pc') {
+                    if (asset.pcSetType === 'full') {
+                        asset.pcSetType = 'partial';
+                        asset.cpu = '없음 (모니터만)';
+                        asset.gpu = '내장 그래픽';
+                    } else if (asset.pcSetType === 'partial') {
+                        asset.pcSetType = 'desk';
+                        asset.cpu = '없음 (데스크만)';
+                        asset.ram = '없음';
+                        asset.gpu = '없음';
+                        asset.disk = '없음';
+                    } else {
+                        asset.pcSetType = 'full';
+                        asset.cpu = 'Intel Core i7-13700';
+                        asset.ram = '32GB DDR5';
+                        asset.gpu = 'RTX 4060';
+                        asset.disk = 'NVMe SSD 1TB';
+                    }
+                    renderCanvas();
+                    renderSpecsTable();
+                    renderStats();
+                    selectAsset(asset.id);
+                    saveAssetToSupabase(asset);
+                }
+            });
+        }
+
+        // 마우스 및 터치 드래그 제한 범위 수학 계산기 및 자석형 스냅 재배열 가이드 엔진
+        function setupGlobalDragListeners() {
+            const handleMove = function(clientX, clientY, e) {
+                if (!isDragging || !dragItem) return;
+
+                if (e && e.cancelable) {
+                    e.preventDefault();
+                }
+
+                const canvas = document.getElementById('classroom-canvas');
+                const canvasRect = canvas.getBoundingClientRect();
+
+                // 중심점 오프셋 포함한 마우스 퍼센트 위치 계산
+                let xPixel = clientX - canvasRect.left - dragOffset.x;
+                let yPixel = clientY - canvasRect.top - dragOffset.y;
+
+                let xPercent = (xPixel / canvasRect.width) * 100;
+                let yPercent = (yPixel / canvasRect.height) * 100;
+
+                const assetId = dragItem.getAttribute('data-id');
+                const asset = assets.find(a => a.id === assetId);
+                
+                if (asset) {
+                    // 카드 크기 기준 마진 여백 처리 (% 단위 산정)
+                    const cardWidthPercent = ((dragItem.offsetWidth / 2) / canvasRect.width) * 100;
+                    const cardHeightPercent = ((dragItem.offsetHeight / 2) / canvasRect.height) * 100;
+
+                    let minX = cardWidthPercent + 0.5;
+                    let maxX = 100.0 - cardWidthPercent - 0.5;
+                    let minY = cardHeightPercent + 0.5;
+                    let maxY = 100.0 - cardHeightPercent - 0.5;
+
+                    if (asset.type === 'student_pc') {
+                        minX = 15.0; 
+                        maxX = 85.0; 
+                        minY = 26.0; 
+                        maxY = 92.0; 
+                    }
+
+                    xPercent = Math.max(minX, Math.min(xPercent, maxX));
+                    yPercent = Math.max(minY, Math.min(yPercent, maxY));
+
+                    dragItem.style.left = xPercent + '%';
+                    dragItem.style.top = yPercent + '%';
+
+                    asset.x = parseFloat(xPercent.toFixed(1));
+                    asset.y = parseFloat(yPercent.toFixed(1));
+
+                    if (selectedAssetId === assetId) {
+                        document.getElementById('edit-pos-x').value = asset.x;
+                        document.getElementById('edit-pos-y').value = asset.y;
+                    }
+                }
+            };
+
+            const handleEnd = async function() {
+                if (isDragging) {
+                    isDragging = false;
+                    if (dragItem) {
+                        dragItem.style.zIndex = '10';
+                        const assetId = dragItem.getAttribute('data-id');
+                        const asset = assets.find(a => a.id === assetId);
+                        
+                        if (asset) {
+                            if (asset.type === 'student_pc') {
+                                // 🧲 [수강생 PC 마그네틱 스냅 및 연쇄 정렬 시프트 작동]
+                                const slots = getStudentSlots(activeClassroom);
+                                let closestSlot = null;
+                                let minDistance = Infinity;
+
+                                // 놓아진 위치에서 가장 가까운 그리드 뼈대 검색
+                                slots.forEach(slot => {
+                                    const dist = Math.sqrt(Math.pow(slot.x - asset.x, 2) + Math.pow(slot.y - asset.y, 2));
+                                    if (dist < minDistance) {
+                                        minDistance = dist;
+                                        closestSlot = slot;
+                                    }
+                                });
+
+                                if (closestSlot) {
+                                    const sourceIdx = parseInt(assetId.split('-S')[1]);
+                                    const roomPCs = assets.filter(a => a.classroom === activeClassroom && a.type === 'student_pc');
+                                    const totalPCs = roomPCs.length;
+                                    
+                                    // 빈 자리가 마지막을 넘어가 구멍이 뚫리지 않도록 현재 PC 개수 범위로 제한
+                                    let targetIdx = Math.min(closestSlot.index, totalPCs);
+
+                                    if (sourceIdx !== targetIdx) {
+                                        setCloudStatus('loading');
+                                        document.getElementById('canvas-loading').classList.remove('hidden');
+
+                                        roomPCs.forEach(pc => {
+                                            pc._num = parseInt(pc.id.split('-S')[1]);
+                                        });
+
+                                        // 순차 밀어내기/정렬 시프트 공식 적용
+                                        if (sourceIdx < targetIdx) {
+                                            // 9번이 18번으로 이사갔을 때 -> 10~18번 PC들이 하나씩 작아지며 당겨짐
+                                            roomPCs.forEach(pc => {
+                                                if (pc._num === sourceIdx) {
+                                                    pc._newNum = targetIdx;
+                                                } else if (pc._num > sourceIdx && pc._num <= targetIdx) {
+                                                    pc._newNum = pc._num - 1;
+                                                } else {
+                                                    pc._newNum = pc._num;
+                                                }
+                                            });
+                                        } else {
+                                            // 18번이 9번으로 이사갔을 때 -> 9~17번 PC들이 하나씩 커지며 밀려남
+                                            roomPCs.forEach(pc => {
+                                                if (pc._num === sourceIdx) {
+                                                    pc._newNum = targetIdx;
+                                                } else if (pc._num >= targetIdx && pc._num < sourceIdx) {
+                                                    pc._newNum = pc._num + 1;
+                                                } else {
+                                                    pc._newNum = pc._num;
+                                                }
+                                            });
+                                        }
+
+                                        // 실제 메모리 데이터 및 좌표 일치화
+                                        const roomNum = activeClassroom.replace('호', '');
+                                        roomPCs.forEach(pc => {
+                                            pc.id = `${roomNum}-S${String(pc._newNum).padStart(2, '0')}`;
+                                            pc.label = `수강생-${String(pc._newNum).padStart(2, '0')}`;
+                                            const snapTargetSlot = slots.find(s => s.index === pc._newNum);
+                                            if (snapTargetSlot) {
+                                                pc.x = snapTargetSlot.x;
+                                                pc.y = snapTargetSlot.y;
+                                            }
+                                        });
+
+                                        // 임시 계산 인자 정리
+                                        roomPCs.forEach(pc => {
+                                            delete pc._num;
+                                            delete pc._newNum;
+                                        });
+
+                                        // 데이터 정렬 시프트 일괄 클라우드 연동 트랜잭션 수행
+                                        await syncStudentPCsToDb(activeClassroom);
+
+                                        setCloudStatus('saved');
+                                        document.getElementById('canvas-loading').classList.add('hidden');
+
+                                        // 수정된 타겟 요소를 에디터 셀렉터 포커싱으로 유지
+                                        selectedAssetId = `${roomNum}-S${String(targetIdx).padStart(2, '0')}`;
+                                    } else {
+                                        // 스냅 좌표가 제자리인 경우 단순 흡입 안착
+                                        const snapTargetSlot = slots.find(s => s.index === sourceIdx);
+                                        if (snapTargetSlot) {
+                                            asset.x = snapTargetSlot.x;
+                                            asset.y = snapTargetSlot.y;
+                                        }
+                                        await saveAssetToSupabase(asset);
+                                    }
+                                }
+                            } else {
+                                // 일반 편의 자산은 스냅 없이 자유 드래그 저장
+                                await saveAssetToSupabase(asset);
+                            }
+                        }
+                        dragItem = null;
+                    }
+                    renderCanvas();
+                    renderSpecsTable();
+                    renderStats();
+                    if (selectedAssetId) {
+                        selectAsset(selectedAssetId);
+                    }
+                }
+            };
+
+            document.addEventListener('mousemove', function(e) {
+                handleMove(e.clientX, e.clientY, e);
+            }, { passive: false });
+
+            document.addEventListener('mouseup', handleEnd);
+
+            document.addEventListener('touchmove', function(e) {
+                if (e.touches.length > 0) {
+                    const touch = e.touches[0];
+                    handleMove(touch.clientX, touch.clientY, e);
+                }
+            }, { passive: false });
+
+            document.addEventListener('touchend', handleEnd);
+        }
+
+        function updateSelectedHighlight() {
+            const canvas = document.getElementById('classroom-canvas');
+            canvas.querySelectorAll('.draggable-asset').forEach(el => {
+                const assetId = el.getAttribute('data-id');
+                const innerContainer = el.firstElementChild;
+                
+                if (innerContainer) {
+                    innerContainer.classList.remove('ring-4', 'ring-sky-500', 'ring-offset-1', 'ring-offset-slate-950', 'scale-105');
+                    el.classList.remove('z-30');
+                    el.classList.add('z-10');
+
+                    if (assetId === selectedAssetId) {
+                        innerContainer.classList.add('ring-4', 'ring-sky-500', 'ring-offset-1', 'ring-offset-slate-950', 'scale-105');
+                        el.classList.remove('z-10');
+                        el.classList.add('z-30'); 
+                    }
+                }
+            });
+        }
+
+        function selectAsset(id) {
+            selectedAssetId = id;
+            const asset = assets.find(a => a.id === id);
+            
+            updateSelectedHighlight();
+
+            if (!asset) {
+                deselectAsset();
+                return;
+            }
+
+            document.getElementById('no-item-selected').classList.add('hidden');
+            const form = document.getElementById('item-editor-form');
+            form.classList.remove('hidden');
+
+            document.getElementById('edit-asset-id').value = asset.id;
+            document.getElementById('edit-asset-code').value = asset.id;
+            document.getElementById('edit-asset-type').value = asset.type;
+            document.getElementById('edit-asset-status').value = asset.status;
+            document.getElementById('edit-pos-x').value = asset.x;
+            document.getElementById('edit-pos-y').value = asset.y;
+
+            toggleSpecInputs();
+
+            if (asset.type === 'student_pc' || asset.type === 'teacher_pc') {
+                document.getElementById('edit-pc-set-type').value = asset.pcSetType || 'full';
+                document.getElementById('edit-spec-cpu').value = asset.cpu || '';
+                document.getElementById('edit-spec-ram').value = asset.ram || '';
+                document.getElementById('edit-spec-gpu').value = asset.gpu || '';
+                document.getElementById('edit-spec-disk').value = asset.disk || '';
+                updatePCSetButtons(asset.pcSetType || 'full');
+            }
+        }
+
+        function deselectAsset() {
+            selectedAssetId = null;
+            document.getElementById('no-item-selected').classList.remove('hidden');
+            document.getElementById('item-editor-form').classList.add('hidden');
+            updateSelectedHighlight();
+        }
+
+        function toggleSpecInputs() {
+            const type = document.getElementById('edit-asset-type').value;
+            const isPC = type === 'student_pc' || type === 'teacher_pc';
+            
+            const specWrapper = document.getElementById('technical-specs-wrapper');
+            const statusTypeWrapper = document.getElementById('pc-status-type-wrapper');
+
+            if (isPC) {
+                specWrapper.classList.remove('hidden');
+                statusTypeWrapper.classList.remove('hidden');
+            } else {
+                specWrapper.classList.add('hidden');
+                statusTypeWrapper.classList.add('hidden');
+            }
+        }
+
+        function updatePCSetButtons(type) {
+            const btnFull = document.getElementById('btn-set-full');
+            const btnPartial = document.getElementById('btn-set-partial');
+            const btnDesk = document.getElementById('btn-set-desk');
+
+            [btnFull, btnPartial, btnDesk].forEach(btn => {
+                btn.className = 'py-2 px-1 rounded-lg border text-center font-bold text-2xs transition border-slate-700 text-slate-400 bg-slate-950 hover:bg-slate-900';
+            });
+
+            if (type === 'full') {
+                btnFull.className = 'py-2 px-1 rounded-lg border text-center font-bold text-2xs transition border-emerald-500 text-emerald-400 bg-emerald-500/10';
+            } else if (type === 'partial') {
+                btnPartial.className = 'py-2 px-1 rounded-lg border text-center font-bold text-2xs transition border-amber-500 text-amber-400 bg-amber-500/10';
+            } else if (type === 'desk') {
+                btnDesk.className = 'py-2 px-1 rounded-lg border text-center font-bold text-2xs transition border-slate-500 text-slate-300 bg-slate-700/30';
+            }
+        }
+
+        function changePCSetType(type) {
+            document.getElementById('edit-pc-set-type').value = type;
+            updatePCSetButtons(type);
+
+            if (type === 'full') {
+                document.getElementById('edit-spec-cpu').value = 'Intel Core i7-13700';
+                document.getElementById('edit-spec-ram').value = '32GB DDR5';
+                document.getElementById('edit-spec-gpu').value = 'RTX 4060';
+                document.getElementById('edit-spec-disk').value = 'NVMe SSD 1TB';
+            } else if (type === 'partial') {
+                document.getElementById('edit-spec-cpu').value = '없음 (모니터만)';
+                document.getElementById('edit-spec-ram').value = '없음';
+                document.getElementById('edit-spec-gpu').value = '내장 그래픽';
+                document.getElementById('edit-spec-disk').value = '없음';
+            } else if (type === 'desk') {
+                document.getElementById('edit-spec-cpu').value = '없음 (데스크만)';
+                document.getElementById('edit-spec-ram').value = '없음';
+                document.getElementById('edit-spec-gpu').value = '없음';
+                document.getElementById('edit-spec-disk').value = '없음';
+            }
+        }
+
+        // SAVE EDITS (인풋에 숫자를 직접 쳐서 이동시킬 때도 점선 구역 가두기 규칙 철저하게 적용)
+        async function saveAssetEdits() {
+            const originalId = document.getElementById('edit-asset-id').value;
+            const newId = document.getElementById('edit-asset-code').value;
+            const type = document.getElementById('edit-asset-type').value;
+            const status = document.getElementById('edit-asset-status').value;
+            let posX = parseFloat(document.getElementById('edit-pos-x').value);
+            let posY = parseFloat(document.getElementById('edit-pos-y').value);
+
+            const asset = assets.find(a => a.id === originalId);
+            if (!asset) return;
+
+            if (originalId !== newId) {
+                const collision = assets.find(a => a.id === newId);
+                if (collision) {
+                    showModal('ID 중복 오류', '이미 존재하는 장비 ID입니다.');
+                    return;
+                }
+                await deleteAssetFromSupabase(originalId);
+            }
+
+            // 직접 좌표 변경 시에도 점선 영역(student-zone-guideline) 수강생 PC 감금 가이드라인 적용
+            if (type === 'student_pc') {
+                posX = Math.max(15.0, Math.min(posX, 74.0)); // 가로 최대 약 74% 선에서 마진 한계 적용 (폭 48px이 11%가량 차지하므로 85% - 11% = 74%)
+                posY = Math.max(26.0, Math.min(posY, 85.5)); // 세로 최대 약 85.5% 선에서 마진 한계 적용
+            } else {
+                posX = Math.max(0.5, Math.min(posX, 90.0));
+                posY = Math.max(0.5, Math.min(posY, 85.0));
+            }
+
+            asset.id = newId;
+            asset.type = type;
+            asset.status = status;
+            asset.x = posX;
+            asset.y = posY;
+
+            if (type === 'teacher_pc') {
+                asset.label = '강사 PC';
+            } else if (type === 'student_pc') {
+                if (asset.label.indexOf('수강생') === -1 || originalId !== newId) {
+                    asset.label = '수강생 ' + newId.substring(newId.lastIndexOf('-') + 1);
+                }
+            } else {
+                asset.label = document.getElementById('edit-asset-type').options[document.getElementById('edit-asset-type').selectedIndex].text;
+            }
+
+            if (type === 'student_pc' || type === 'teacher_pc') {
+                asset.pcSetType = document.getElementById('edit-pc-set-type').value;
+                asset.cpu = document.getElementById('edit-spec-cpu').value;
+                asset.ram = document.getElementById('edit-spec-ram').value;
+                asset.gpu = document.getElementById('edit-spec-gpu').value;
+                asset.disk = document.getElementById('edit-spec-disk').value;
+            } else {
+                delete asset.pcSetType;
+                delete asset.cpu;
+                delete asset.ram;
+                delete asset.gpu;
+                delete asset.disk;
+            }
+
+            selectedAssetId = newId;
+            
+            await saveAssetToSupabase(asset);
+
+            renderCanvas();
+            renderStats();
+            renderSpecsTable();
+            showModal('저장 완료', '장비 정보 및 스펙이 Supabase 클라우드 DB에 동기화 완료되었습니다.');
+        }
+
+        // DELETE ASSET WITH SMART GAP-FILLING RE-INDEXING (물리 슬롯 위치 스냅 및 재정렬 적용)
+        async function deleteAsset() {
+            const id = document.getElementById('edit-asset-id').value;
+            const assetToDelete = assets.find(a => a.id === id);
+            if (!assetToDelete) return;
+
+            // 1. 로컬 메모리 배열에서 우선 제거
+            assets = assets.filter(a => a.id !== id);
+            
+            // 2. 삭제 대상 장비를 Supabase 클라우드 DB에서 완벽히 소거
+            await deleteAssetFromSupabase(id);
+
+            // 3. 만약 삭제한 자산이 '수강생 PC'인 경우 번호 재색인 및 물리 스냅 재배치
+            if (assetToDelete.type === 'student_pc') {
+                const roomNum = activeClassroom.replace('호', '');
+                const slots = getStudentSlots(activeClassroom);
+                
+                // 현재 호실에 남아있는 전체 수강생 PC 목록 필터링
+                const remainingStudentPCs = assets.filter(a => a.classroom === activeClassroom && a.type === 'student_pc');
+                
+                // 기존 번호 순서(예: S-01, S-02...)대로 정밀 정렬
+                remainingStudentPCs.sort((a, b) => {
+                    const numA = parseInt(a.id.split('-S')[1]) || 0;
+                    const numB = parseInt(b.id.split('-S')[1]) || 0;
+                    return numA - numB;
+                });
+
+                // 중간이 빠진 번호를 1번부터 차곡차곡 다시 채우고 해당 슬롯 좌표로 완벽하게 흡입 밀착시킴
+                for (let i = 0; i < remainingStudentPCs.length; i++) {
+                    const pc = remainingStudentPCs[i];
+                    const expectedIndex = i + 1;
+                    const expectedId = `${roomNum}-S${String(expectedIndex).padStart(2, '0')}`;
+                    const expectedLabel = `수강생-${String(expectedIndex).padStart(2, '0')}`;
+
+                    const slot = slots.find(s => s.index === expectedIndex);
+                    if (slot) {
+                        pc.x = slot.x;
+                        pc.y = slot.y;
+                    }
+
+                    if (pc.id !== expectedId) {
+                        const oldId = pc.id;
+                        await deleteAssetFromSupabase(oldId);
+                        pc.id = expectedId;
+                        pc.label = expectedLabel;
+                    }
+                }
+                
+                // 배치 순서 꼬임 및 유실 방지를 위한 동기화 트랜잭션 수행
+                await syncStudentPCsToDb(activeClassroom);
+            }
+
+            deselectAsset();
+            renderCanvas();
+            renderStats();
+            renderSpecsTable();
+            showModal('삭제 및 정렬 완료', '선택한 장비가 안전하게 삭제되었으며,\n남은 수강생 PC 번호들이 빈틈없이 순서대로 한 칸씩 앞으로 정렬되었습니다.');
+        }
+
+        // 9. DYNAMIC INVENTORY & SPECIFICATIONS TABLE AGGREGATOR
+        function renderSpecsTable() {
+            const currentRoomAssets = assets.filter(a => a.classroom === activeClassroom);
+            const pcs = currentRoomAssets.filter(a => a.type === 'student_pc' || a.type === 'teacher_pc');
+
+            document.getElementById('total-pc-count-badge').innerText = `총 ${pcs.length}대`;
+
+            const tbody = document.getElementById('specs-summary-tbody');
+            tbody.innerHTML = '';
+
+            if (pcs.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="4" class="py-6 text-center text-slate-500">이 강의실에 등록된 PC가 없습니다.</td></tr>`;
+                return;
+            }
+
+            const specGroups = {};
+            pcs.forEach(pc => {
+                let specKey = '데스크 단독';
+                let details = '하드웨어 구성품이 마련되지 않은 빈 데스크 구조입니다.';
+
+                if (pc.pcSetType === 'full') {
+                    specKey = 'Full 세트';
+                    details = `${pc.cpu || '미정'} / ${pc.ram || '미정'} / ${pc.gpu || '미정'} / ${pc.disk || '미정'}`;
+                } else if (pc.pcSetType === 'partial') {
+                    specKey = '모니터 세트';
+                    details = `수강생 데스크 및 모니터 장착 상태 (${pc.gpu || '내장 그래픽'})`;
+                }
+
+                if (!specGroups[details]) {
+                    specGroups[details] = {
+                        categoryName: specKey,
+                        count: 0,
+                        rawDetails: details
+                    };
+                }
+                specGroups[details].count++;
+            });
+
+            Object.values(specGroups).forEach(group => {
+                const ratio = ((group.count / pcs.length) * 100).toFixed(0);
+                
+                let labelStyle = 'bg-slate-800 text-slate-400';
+                if (group.categoryName === 'Full 세트') labelStyle = 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20';
+                else if (group.categoryName === '모니터 세트') labelStyle = 'bg-amber-500/10 text-amber-400 border border-amber-500/20';
+
+                tbody.innerHTML += `
+                    <tr>
+                        <td class="py-3 px-4">
+                            <span class="px-2 py-0.5 rounded text-2xs font-bold ${labelStyle}">${group.categoryName}</span>
+                        </td>
+                        <td class="py-3 px-4 text-slate-300 font-mono text-2xs md:text-xs font-semibold">${group.rawDetails}</td>
+                        <td class="py-3 px-4 text-center font-bold text-white">${group.count}대</td>
+                        <td class="py-3 px-4 text-right">
+                            <div class="flex items-center justify-end gap-2">
+                                <span class="text-slate-400 font-bold text-2xs">${ratio}%</span>
+                                <div class="w-16 bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                                    <div class="bg-sky-500 h-full" style="width: ${ratio}%"></div>
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            });
+        }
+
+        // 10. CLASSROOM AREA CONVERTER & PERSISTENCE
+        function convertArea(unit) {
+            const m2Input = document.getElementById('input-area-m2');
+            const pyoungInput = document.getElementById('input-area-pyoung');
+
+            if (unit === 'm2') {
+                const m2Val = parseFloat(m2Input.value);
+                if (!isNaN(m2Val)) {
+                    pyoungInput.value = Math.round(m2Val * 0.3025);
+                } else {
+                    pyoungInput.value = '';
+                }
+            } else {
+                const pyoungVal = parseFloat(pyoungInput.value);
+                if (!isNaN(pyoungVal)) {
+                    m2Input.value = Math.round(pyoungVal / 0.3025);
+                } else {
+                    m2Input.value = '';
+                }
+            }
+        }
+
+        async function saveClassroomArea() {
+            const m2 = parseInt(document.getElementById('input-area-m2').value) || 0;
+            const pyoung = parseInt(document.getElementById('input-area-pyoung').value) || 0;
+
+            classroomAreas[activeClassroom] = { m2, pyoung };
+            document.getElementById('classroom-area-display').innerText = `${m2}㎡ (${pyoung}평)`;
+
+            const teacherPC = assets.find(a => a.classroom === activeClassroom && a.type === 'teacher_pc');
+            if (teacherPC && supabaseClient) {
+                teacherPC.cpu = `${teacherPC.cpu.split('(')[0].trim()} (${m2}㎡ / ${pyoung}평)`;
+                await saveAssetToSupabase(teacherPC);
+            }
+
+            showModal('저장 완료', `현재 강의실(${activeClassroom})의 면적 정보가 수정 및 DB 동기화되었습니다.`);
+        }
+
+        // 11. MAINTENANCE LOG MANAGER
+        function toggleLogForm() {
+            const form = document.getElementById('new-log-form');
+            form.classList.toggle('hidden');
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById('log-date').value = today;
+            if (selectedAssetId) {
+                document.getElementById('log-asset-id').value = selectedAssetId;
+            }
+        }
+
+        async function addMaintenanceLog() {
+            const assetId = document.getElementById('log-asset-id').value.trim();
+            const date = document.getElementById('log-date').value;
+            const desc = document.getElementById('log-desc').value.trim();
+
+            if (!assetId || !desc) {
+                showModal('입력 요망', '장비 ID와 작업 내역을 입력해 주세요.');
+                return;
+            }
+
+            if (supabaseClient) {
+                try {
+                    setCloudStatus('loading');
+                    const { data, error } = await supabaseClient
+                        .from('logs')
+                        .insert({
+                            classroom: activeClassroom,
+                            asset_id: assetId,
+                            date: date,
+                            desc_text: desc
+                        })
+                        .select();
+
+                    if (error) throw error;
+                    
+                    if (data && data[0]) {
+                        maintenanceLogs.unshift({
+                            id: data[0].id,
+                            classroom: data[0].classroom,
+                            assetId: data[0].asset_id,
+                            date: data[0].date,
+                            desc: data[0].desc_text
+                        });
+                    }
+                    setCloudStatus('saved');
+                } catch (err) {
+                    console.error("로그 추가 에러:", err);
+                    setCloudStatus('error');
+                    maintenanceLogs.unshift({
+                        id: Date.now(),
+                        classroom: activeClassroom,
+                        assetId: assetId,
+                        date: date,
+                        desc: desc
+                    });
+                }
+            } else {
+                maintenanceLogs.unshift({
+                    id: Date.now(),
+                    classroom: activeClassroom,
+                    assetId: assetId,
+                    date: date,
+                    desc: desc
+                });
+            }
+
+            renderMaintenanceLogs();
+            toggleLogForm();
+            document.getElementById('log-asset-id').value = '';
+            document.getElementById('log-desc').value = '';
+            showModal('등록 성공', '유지보수 내역이 Supabase `logs` 테이블에 기록되었습니다.');
+        }
+
+        function renderMaintenanceLogs() {
+            const list = document.getElementById('maintenance-logs-list');
+            list.innerHTML = '';
+
+            const currentRoomLogs = maintenanceLogs.filter(log => log.classroom === activeClassroom);
+
+            if (currentRoomLogs.length === 0) {
+                list.innerHTML = `<div class="py-12 text-center text-slate-500 text-xs">현재 호실에 등록된 수리/정비 내역이 없습니다.</div>`;
+                return;
+            }
+
+            currentRoomLogs.forEach(log => {
+                list.innerHTML += `
+                    <div class="bg-slate-950 p-3.5 rounded-xl border border-slate-800 flex flex-col gap-1.5 text-2xs hover:border-slate-700 transition">
+                        <div class="flex items-center justify-between text-slate-400">
+                            <span class="font-extrabold text-sky-400 bg-sky-950/40 border border-sky-800/30 px-2 py-0.5 rounded-md font-mono">${log.assetId}</span>
+                            <span class="font-semibold text-slate-500">${log.date}</span>
+                        </div>
+                        <p class="text-slate-300 font-medium leading-relaxed">${log.desc}</p>
+                    </div>
+                `;
+            });
+        }
+
+        // ==========================================
+        // [IMPROVED MULTI-COUNT ASSET BATCH CREATION FLOW WITH COLLISION PREVENTER]
+        // ==========================================
+        
+        function openAddAssetModal() {
+            document.getElementById('add-asset-modal').classList.remove('hidden');
+            document.getElementById('add-asset-modal').classList.add('flex');
+            document.getElementById('add-asset-count').value = "1"; 
+        }
+
+        function closeAddAssetModal() {
+            document.getElementById('add-asset-modal').classList.add('hidden');
+            document.getElementById('add-asset-modal').classList.remove('flex');
+        }
+
+        function adjustAddCount(amount) {
+            const input = document.getElementById('add-asset-count');
+            let current = parseInt(input.value) || 1;
+            current += amount;
+            if (current < 1) current = 1;
+            if (current > 50) current = 50; 
+            input.value = current;
+        }
+
+        // 드래그/추가 시 아이콘들이 한 좌표에 겹치지 않게 나선형(Spiral) 분산 배치 좌표 생성기
+        function findNonCollidingCoordinate(startX, startY, currentAssets, assetType) {
+            let finalX = startX;
+            let finalY = startY;
+            let angle = 0;
+            let radius = 0; 
+            const stepRadius = 6; 
+            const stepAngle = 0.5; 
+            const checkRadiusThreshold = 6.0;
+
+            if (assetType === 'ac_ceiling') { startX = 25; startY = 15; }
+            else if (assetType === 'ac_stand') { startX = 8; startY = 80; }
+            else if (assetType === 'fan') { startX = 90; startY = 35; }
+            else if (assetType === 'circulator') { startX = 90; startY = 55; }
+            else if (assetType === 'tv') { startX = 35; startY = 15; }
+            else if (assetType === 'locker') { startX = 90; startY = 80; }
+
+            let foundSafeSpot = false;
+            let attempts = 0;
+
+            while (!foundSafeSpot && attempts < 200) {
+                finalX = startX + radius * Math.cos(angle);
+                finalY = startY + radius * Math.sin(angle);
+
+                finalX = Math.max(5, Math.min(finalX, 90));
+                finalY = Math.max(10, Math.min(finalY, 88));
+
+                let collisionFound = false;
+                for (let i = 0; i < currentAssets.length; i++) {
+                    const existing = currentAssets[i];
+                    const distance = Math.sqrt(Math.pow(existing.x - finalX, 2) + Math.pow(existing.y - finalY, 2));
+                    if (distance < checkRadiusThreshold) {
+                        collisionFound = true;
+                        break;
+                    }
+                }
+
+                if (!collisionFound) {
+                    foundSafeSpot = true;
+                } else {
+                    angle += stepAngle;
+                    radius += stepRadius * (stepAngle / (2 * Math.PI)); 
+                    attempts++;
+                }
+            }
+
+            return { x: parseFloat(finalX.toFixed(1)), y: parseFloat(finalY.toFixed(1)) };
+        }
+
+        // 다중 일괄 장비 일괄 생성 처리기 (수강생 PC 그리드 스마트 중간 삽입 정렬 수집 알고리즘 적용)
+        async function createNewAssetBatch(type) {
+            const totalToCreate = parseInt(document.getElementById('add-asset-count').value) || 1;
+            closeAddAssetModal();
+
+            const roomNum = activeClassroom.replace('호', '');
+            
+            setCloudStatus('loading');
+            document.getElementById('canvas-loading').classList.remove('hidden');
+
+            let firstNewId = null;
+            let successCount = 0;
+
+            // 1. 수강생 PC일 때 비어있는 격자(Grid) 가이드라인 좌표들을 찾아내어 중간 삽입 처리
+            if (type === 'student_pc') {
+                const slots = getStudentSlots(activeClassroom);
+                const isVerticalGrid = ['401호', '501호', '601호', '701호'].includes(activeClassroom);
+
+                for (let b = 0; b < totalToCreate; b++) {
+                    // 루프 돌 때마다 업데이트된 최신 assets 상태 기준으로 빈 슬롯 다시 계산 (실시간 연속 밀어내기 반영)
+                    let emptyGridSlots = [];
+                    slots.forEach(slot => {
+                        const isOccupied = assets.some(a => 
+                            a.classroom === activeClassroom && 
+                            a.type === 'student_pc' && 
+                            Math.abs(a.x - slot.x) < 1.0 && 
+                            Math.abs(a.y - slot.y) < 1.0
+                        );
+
+                        if (!isOccupied) {
+                            emptyGridSlots.push(slot);
+                        }
+                    });
+
+                    // 비어있는 번호 중 가장 빠른 번호 순으로 정렬
+                    emptyGridSlots.sort((a, b) => a.index - b.index);
+
+                    let targetX, targetY, targetGridNum;
+
+                    if (emptyGridSlots.length > 0) {
+                        const slot = emptyGridSlots[0];
+                        targetX = slot.x;
+                        targetY = slot.y;
+                        targetGridNum = slot.index;
+
+                        // ★ [핵심: 밀어내기 정렬 알고리즘]
+                        const roomPCs = assets.filter(a => a.classroom === activeClassroom && a.type === 'student_pc');
+                        roomPCs.forEach(pc => {
+                            pc._num = parseInt(pc.id.split('-S')[1]) || 0;
+                        });
+
+                        const pcsToShift = roomPCs.filter(pc => pc._num >= targetGridNum);
+
+                        // 큰 번호부터 순서대로 뒤로 밀어야 ID 중복 충돌(Collision)이 나지 않습니다
+                        pcsToShift.sort((a, b) => b._num - a._num);
+
+                        for (const pc of pcsToShift) {
+                            const oldId = pc.id;
+                            const newNum = pc._num + 1;
+                            const newId = `${roomNum}-S${String(newNum).padStart(2, '0')}`;
+                            const newLabel = `수강생-${String(newNum).padStart(2, '0')}`;
+
+                            const shiftTargetSlot = slots.find(s => s.index === newNum);
+                            if (shiftTargetSlot) {
+                                pc.x = shiftTargetSlot.x;
+                                pc.y = shiftTargetSlot.y;
+                            }
+
+                            await deleteAssetFromSupabase(oldId);
+                            pc.id = newId;
+                            pc.label = newLabel;
+                        }
+
+                        // 임시 프로퍼티 정리
+                        assets.forEach(a => delete a._num);
+
+                    } else {
+                        // 만약 모든 격자가 꽉 찬 상황이라면 예외적으로 마지막 번호로 추가 배치
+                        const currentCount = assets.filter(a => a.classroom === activeClassroom && a.type === 'student_pc').length;
+                        targetGridNum = currentCount + 1;
+                        const safeCoords = findNonCollidingCoordinate(45, 50, assets.filter(a => a.classroom === activeClassroom), type);
+                        targetX = Math.max(16.5, Math.min(safeCoords.x, 73.5));
+                        targetY = Math.max(28.5, Math.min(safeCoords.y, 85.5));
+                    }
+
+                    const padCount = String(targetGridNum).padStart(2, '0');
+                    const newId = `${roomNum}-S${padCount}`;
+
+                    const newAsset = {
+                        id: newId,
+                        classroom: activeClassroom,
+                        type: 'student_pc',
+                        label: `수강생-${padCount}`,
+                        x: targetX,
+                        y: targetY,
+                        status: 'active',
+                        pcSetType: 'full',
+                        cpu: isVerticalGrid ? 'Intel Core i7-13700' : 'Intel Core i5-12400',
+                        ram: isVerticalGrid ? '32GB DDR5' : '16GB DDR4',
+                        gpu: isVerticalGrid ? 'RTX 4060' : 'RTX 3060',
+                        disk: isVerticalGrid ? 'NVMe SSD 1TB' : 'NVMe SSD 512GB'
+                    };
+
+                    assets.push(newAsset);
+                    if (b === 0) firstNewId = newId;
+                    successCount++;
+                }
+
+                // 수강생 PC 일련의 순서 업데이트 및 한 번에 쓰기 트랜잭션 호출
+                await syncStudentPCsToDb(activeClassroom);
+
+            } else {
+                // 2. 수강생 PC 이외의 일반 편의 장비 배치 처리
+                let baseSpawnX = 45;
+                let baseSpawnY = 13; 
+
+                for (let b = 0; b < totalToCreate; b++) {
+                    const count = assets.filter(a => a.classroom === activeClassroom && a.type === type).length + 1;
+                    const padCount = String(count).padStart(2, '0');
+                    
+                    let prefix = 'S';
+                    let label = `수강생-${padCount}`;
+                    
+                    if (type === 'teacher_pc') { prefix = 'T'; label = '강사 PC'; }
+                    else if (type === 'ac_ceiling') { prefix = 'ACC'; label = `천장형에어컨 ${padCount}`; }
+                    else if (type === 'ac_stand') { prefix = 'ACS'; label = `스탠드에어컨 ${padCount}`; }
+                    else if (type === 'fan') { prefix = 'FN'; label = `선풍기 ${padCount}`; }
+                    else if (type === 'circulator') { prefix = 'CIR'; label = `서큘레이터 ${padCount}`; }
+                    else if (type === 'tv') { prefix = 'TV'; label = `TV ${padCount}`; }
+                    else if (type === 'locker') { prefix = 'LK'; label = `사물함 ${padCount}`; }
+                    else if (type === 'projector') { prefix = 'PR'; label = `프로젝터 ${padCount}`; }
+                    else if (type === 'screen') { prefix = 'SCR'; label = `스크린 ${padCount}`; }
+
+                    const newId = `${roomNum}-${prefix}${padCount}`;
+                    const safeCoords = findNonCollidingCoordinate(baseSpawnX, baseSpawnY, assets.filter(a => a.classroom === activeClassroom), type);
+
+                    const newAsset = {
+                        id: newId,
+                        classroom: activeClassroom,
+                        type: type,
+                        label: label,
+                        x: safeCoords.x, 
+                        y: safeCoords.y,
+                        status: 'active'
+                    };
+
+                    assets.push(newAsset);
+                    await saveAssetToSupabase(newAsset);
+
+                    if (b === 0) firstNewId = newId;
+                    successCount++;
+                }
+            }
+
+            setCloudStatus('saved');
+            document.getElementById('canvas-loading').classList.add('hidden');
+
+            renderCanvas();
+            renderStats();
+            renderSpecsTable();
+            
+            if (firstNewId) {
+                selectAsset(firstNewId);
+            }
+
+            showModal('다중 장비 추가 성공', `비어있는 최적의 격자 슬롯을 감지하여 수강생 PC를 삽입했습니다.\n기존의 뒤편 장비들이 번호를 하나씩 양보하여 밀려나 정렬이 완벽히 유지되었습니다.`);
+        }
+
+        function resetToDefault() {
+            showModal('초기화 알림', '데이터베이스 전체 리셋을 수행하려면 우측 상단의 [기본 배치 초기화] 버튼을 클릭해 주세요.');
+        }
+
+        // 13. CUSTOM MODAL BOX SYSTEM
+        function showModal(title, desc) {
+            document.getElementById('modal-title').innerText = title;
+            document.getElementById('modal-desc').innerText = desc;
+            
+            const modal = document.getElementById('custom-modal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function closeModal() {
+            const modal = document.getElementById('custom-modal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+    </script>
+</body>
+</html>
